@@ -1,73 +1,61 @@
-name: CI
+name: CI/CD Pipeline
 
 on:
   push:
     branches:
       - main
-  pull_request: ~
-  workflow_dispatch: ~
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
-  cancel-in-progress: true
+  pull_request:
+    branches:
+      - main
 
 jobs:
-  tests:
-    name: Tests
+  build:
+
     runs-on: ubuntu-latest
+
+    services:
+      db:
+        image: mysql:8.0
+        ports:
+          - 3306:3306
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: coding_challenge
+          MYSQL_USER: user
+          MYSQL_PASSWORD: password
+        volumes:
+          - mysql_data:/var/lib/mysql
+
     steps:
-      -
-        name: Checkout
-        uses: actions/checkout@v4
-      -
-        name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-      -
-        name: Build Docker images
-        uses: docker/bake-action@v4
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Set up PHP
+        uses: dunglas/frankenphp:1-php8.3
         with:
-          pull: true
-          load: true
-          files: |
-            compose.yaml
-            compose.override.yaml
-          set: |
-            *.cache-from=type=gha,scope=${{github.ref}}
-            *.cache-from=type=gha,scope=refs/heads/main
-            *.cache-to=type=gha,scope=${{github.ref}},mode=max
-      -
-        name: Start services
-        run: docker compose up --wait --no-build
-      -
-        name: Check HTTP reachability
-        run: curl -v --fail-with-body http://localhost
-      -
-        name: Check HTTPS reachability
-        if: false # Remove this line when the homepage will be configured, or change the path to check
-        run: curl -vk --fail-with-body https://localhost
-      -
-        name: Create test database
-        if: false # Remove this line if Doctrine ORM is installed
-        run: docker compose exec -T php bin/console -e test doctrine:database:create
-      -
-        name: Run migrations
-        if: false # Remove this line if Doctrine Migrations is installed
-        run: docker compose exec -T php bin/console -e test doctrine:migrations:migrate --no-interaction
-      -
-        name: Run PHPUnit
-        if: false # Remove this line if PHPUnit is installed
-        run: docker compose exec -T php bin/phpunit
-      -
-        name: Doctrine Schema Validator
-        if: false # Remove this line if Doctrine ORM is installed
-        run: docker compose exec -T php bin/console -e test doctrine:schema:validate
-  lint:
-    name: Docker Lint
+          php-version: '8.3'
+          extensions: mbstring, intl, pdo, pdo_mysql, zip, opcache, intl, apcu, @composer
+          ini-values: post_max_size=256M, max_execution_time=300
+          coverage: none
+
+  deploy:
+    name: Deploy Coding challenge
+    
     runs-on: ubuntu-latest
+    
     steps:
-      -
-        name: Checkout
-        uses: actions/checkout@v4
-      -
-        name: Lint Dockerfile
-        uses: hadolint/hadolint-action@v3.1.0
+      - uses: actions/checkout@v1
+
+      - uses: altinukshini/deployment-action@releases/v1
+        name: Create GitHub deployment
+        id: deployment
+        with:
+          token: "${{ github.token }}"
+          target_url: https://localhost/
+          environment: production
+
+      - name: Deploy Coding challenge
+        run: |
+          git pull
+          php bin/console cache:clear
+          sudo chmod 777 -R var
