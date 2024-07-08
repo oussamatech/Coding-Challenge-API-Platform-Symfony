@@ -40,3 +40,9 @@ or with a custom bootstrap file:
 ```bash
 docker-compose exec php php bin/phpunit --bootstrap=config/bootstrap.php
 ```
+
+or
+
+```bash
+php bin/phpunit --bootstrap=config/bootstrap.php
+```
